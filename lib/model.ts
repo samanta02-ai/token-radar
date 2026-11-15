@@ -1,3 +1,56 @@
+// The radar-2 model: how a pre-token protocol gets an implied value and a rank.
+//
+// The question the board answers
+// ------------------------------
+// A protocol with no token has no market cap, so its value cannot be read off a
+// market. The model prices it by analogy: what would it be worth if the market
+// valued its locked value the way it values the live-token protocols in the same
+// category? The answer is an implied value in dollars, and the board ranks every
+// pre-token protocol by that value, strongest first.
+//
+// The category multiple (the model's one idea)
+// -------------------------------------------
+//   catMultiple = median mcap/TVL of the live-token protocols in the same category
+//                 (at least 3 peers, else the global median over all live protocols),
+//                 clamped to [0.05, 1.0], rounded to 4 decimals.
+//
+// The multiple is the market's own verdict: for every live protocol the snapshot
+// knows both a market cap and a TVL, so the ratio is a fact, not a guess. The
+// median over a category's peers keeps one outlier from setting the price; the
+// 3-peer minimum keeps a category with one or two live names from pricing on
+// noise, and the global median is the fallback there. The clamp [0.05, 1.0] keeps
+// the model honest at both ends: a protocol's implied value can never exceed its
+// TVL (a multiple above 1 would claim the market pays more than the value locked)
+// and never falls below 5% of it (a multiple near zero would price every
+// protocol at nothing). All multiples are computed from the snapshot at run
+// time — no protocol name is ever special-cased and no multiple is hand-written.
+//
+// From multiple to implied value
+// ------------------------------
+//   base        = tvl_usd x catMultiple
+//   growth      = clamp(change_7d, -60, 120) per cent
+//   growthMult  = 1 + (growth / 100) x GROWTH_WEIGHT        (0.5)
+//   maturity    = 0.6 + min(age_days, 1095) / 1095 x 0.4     (age unknown: 365)
+//   breadth     = 1 + 0.02 x min(chains - 1, 5)             (1.00-1.10)
+//   implied     = max(1, round(base x growthMult x maturity x breadth))
+//
+// Growth rewards a protocol the market is already noticing (a 7-day TVL rise)
+// and punishes one it is leaving, capped so a single week cannot dominate the
+// rank. Maturity rewards staying power: a protocol that has existed for three
+// years scores the full 1.0, a brand-new one 0.6, and one with no listed date is
+// scored at one year. Breadth rewards distribution: each extra chain up to five
+// adds 2%. The implied value is an integer of at least $1, so no row ever
+// ranks at zero.
+//
+// What lives in this file
+// -----------------------
+// parseSnapshot validates the sealed input; categoryMultiples and multipleFor
+// price the categories; impliedValue scores one protocol; isRankable is the
+// house's exclusion rule for the early radar; buildBoard ranks the watchlist
+// plus the early rows; farmSteps writes each row's seven-step farm plan from
+// the protocol's own record; buildRadar assembles everything the dashboard
+// renders; boardIssue refuses a board the gate would not take.
+
 // The token radar's model, radar-2: one snapshot of the protocol universe in, one ranked board out.
 //
 // The board covers every slug in the snapshot's watchlist (the floor, never a ceiling) and adds the
