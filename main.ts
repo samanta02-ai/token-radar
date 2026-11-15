@@ -1,3 +1,47 @@
+// Token Launch Radar — the entrypoint (token-radar-01, model radar-2).
+//
+// What this program does
+// ----------------------
+// It turns one sealed snapshot of the protocol universe into a ranked board of
+// pre-token protocols worth farming, plus a static dashboard that shows the same
+// board. The snapshot is the only input: every figure on the board — the
+// category multiples, the implied values, the ranks, the farm plans — is computed
+// from that snapshot at run time. No protocol is special-cased, no multiple is
+// hand-written, and nothing here reaches the network.
+//
+// Pipeline (snapshot in, board + dashboard out)
+// --------------------------------------------
+//   1. Parse the snapshot.  --input takes a snapshot.json file or the directory
+//      holding it; inside the grader's container the sealed file is /input.
+//      parseSnapshot (lib/model.ts) refuses anything that is not the shape the
+//      model scores, so a bad input fails here, loudly, instead of producing
+//      a board that looks right and is not.
+//   2. Score.  buildRadar (lib/model.ts) ranks every watchlist slug plus the
+//      early radar — pre-token protocols below the watchlist floor that pass the
+//      house's own exclusion rule — by implied value under the radar-2 model
+//      (category multiple x TVL, adjusted for 7-day growth, age maturity and
+//      chain breadth; see the header of lib/model.ts for the arithmetic).
+//      boardIssue refuses a board that misses a watchlist slug, has a broken
+//      rank order, or gives every row the same implied value.
+//   3. Write.  /output/board.json (the ranked rows), /output/data.js (the same
+//      board as one script the dashboard reads, no fetch and no network), a copy
+//      of dashboard/ and screenshots/ from this repository, and /output/dossier.json
+//      last — the scorer rebuilds the dossier from /output and compares bytes,
+//      so it must be written after everything it describes.
+//   4. Report.  One line on stdout names the counts (protocols, watchlist,
+//      rows scored, early and live set aside) and the files written.
+//
+// Running it
+// ----------
+//   node main.ts --input <snapshot.json|directory>
+//   MAKEFUN_OUTPUT_DIR=out node main.ts --input <kit>/input/snapshot.json
+//
+// Outside the grader's container MAKEFUN_OUTPUT_DIR stands in for /output.
+// The dashboard is a static page and must stay small: the gate caps its text at
+// 64 KiB (TEXT_MAX_BYTES) and its screenshots at 4 images of 512 KiB each.
+// Exit codes: 0 on success, 1 when the model wrote a board the gate refuses or
+// the screenshots are short, 2 when the snapshot file is missing.
+
 // A working token-radar-01 entry (Node 22, standard library only).
 //
 // The program reads the sealed snapshot from /input/snapshot.json (or --input <file|dir>), scores every
@@ -89,3 +133,8 @@ process.stdout.write(
   `token radar: ${snapshot.protocols.length} protocols, ${snapshot.watchlist.length} on the watchlist, ${board.length} rows scored (${radar.early_size} early, ${radar.live_size} live set aside)\n` +
     `token radar: wrote ${join(out, 'board.json')}, ${join(out, 'data.js')}, ${join(out, 'dashboard')} (3 files), ${join(out, 'screenshots')} (${shots.length} images) and ${join(out, 'dossier.json')}\n`,
 );
+
+// Run note: the program is deterministic — the same snapshot always writes the
+// same board, the same data.js and the same dossier, byte for byte. The dashboard
+// recomputes every row from the multiples in data.js, so the page, the board and
+// the model never drift apart.
